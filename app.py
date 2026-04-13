@@ -45,8 +45,7 @@ REPONSE: <reponse en francais>"""
 
 def get_db():
     import sqlite3
-    db_path = os.path.join(os.path.dirname(__file__), "transport.db")
-    return sqlite3.connect(db_path)
+    return sqlite3.connect("transport.db")
 
 class Question(BaseModel):
     question: str
