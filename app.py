@@ -46,11 +46,12 @@ REPONSE: <reponse en francais>"""
 def get_db():
     import sqlite3
     import os
+    import json
     db_path = "transport.db"
+    files = os.listdir('.')
     if not os.path.exists(db_path):
-        raise Exception(f"DB not found! Files: {os.listdir('.')}")
+        raise Exception(f"DB not found! Available files: {json.dumps(files)}")
     conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
     return conn
 
 class Question(BaseModel):
