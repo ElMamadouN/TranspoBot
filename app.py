@@ -1,7 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import sqlite3
 import os
 from dotenv import load_dotenv
 import requests
@@ -17,62 +16,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-USE_OLLAMA = os.getenv("USE_OLLAMA", "true").lower() == "true"
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+USE_OLLAMA = os.getenv("USE_OLLAMA", "false").lower() == "true"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 SYSTEM_PROMPT = """Tu es un assistant IA pour une societe de transport urbain au Senegal.
-Tu dois repondre aux questions en langage naturel en generant des requetes SQL SELECT uniquement.
+Tu generes des requetes SQL SELECT pour repondre aux questions.
 
-Schema de la base de donnees:
-- vehicules(id, immatriculation, marque, modele, annee, kilometrage, statut)
-- chauffeurs(id, nom, prenom, telephone, licence, date_embauche, statut)
-- lignes(id, numero, nom, debut_terminal, fin_terminal, distance_km)
-- tarifs(id, ligne_id, type_tarif, montant)
-- trajets(id, vehicule_id, chauffeur_id, ligne_id, date_heure_depart, date_heure_arrivee, nb_passagers, statut)
-- incidents(id, trajet_id, description, date_incident, gravite)
+Tables: vehicules, chauffeurs, lignes, trajets, incidents
 
-Regles importantes:
-1. Reponds TOUJOURS par un SQL SELECT (jamais INSERT, UPDATE, DELETE)
-2. Utilise les jointures quand necessaire (trajets.chauffeur_id = chauffeurs.id, etc.)
-3. Pour les dates, utilise NOW() et DATE_SUB(NOW(), INTERVAL X DAY/MONTH)
-4. Formate ta reponse en francais de maniere claire
-5. Si la question n'est pas SQL-able (ex: "qui est le patron?"), reponds directement
-
-Reponds avec ce format:
+Reponds avec format:
 SQL: <requete SQL>
-REPONSE: <reponse en francais>"""
+REPONSE: <reponse>"""
 
-def init_db():
-    import sqlite3
-    import os
-    if not os.path.exists("transport.db"):
-        conn = sqlite3.connect("transport.db")
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS vehicules (id INTEGER PRIMARY KEY, immatriculation TEXT UNIQUE, marque TEXT, modele TEXT, annee INTEGER, kilometrage INTEGER DEFAULT 0, statut TEXT DEFAULT 'actif', date_derniere_maintenance TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS chauffeurs (id INTEGER PRIMARY KEY, nom TEXT, prenom TEXT, telephone TEXT, licence TEXT, date_embauche TEXT, statut TEXT DEFAULT 'actif')''')
-        c.execute('''CREATE TABLE IF NOT EXISTS lignes (id INTEGER PRIMARY KEY, numero TEXT UNIQUE, nom TEXT, debut_terminal TEXT, fin_terminal TEXT, distance_km REAL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS tarifs (id INTEGER PRIMARY KEY, ligne_id INTEGER, type_tarif TEXT, montant REAL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS trajets (id INTEGER PRIMARY KEY, vehicule_id INTEGER, chauffeur_id INTEGER, ligne_id INTEGER, date_heure_depart TEXT, date_heure_arrivee TEXT, nb_passagers INTEGER DEFAULT 0, statut TEXT DEFAULT 'planifie')''')
-        c.execute('''CREATE TABLE IF NOT EXISTS incidents (id INTEGER PRIMARY KEY, trajet_id INTEGER, description TEXT, date_incident TEXT, gravite TEXT)''')
-        c.execute('INSERT OR IGNORE INTO vehicules VALUES(1,"DK-9012-EF","Mercedes","Citaro",2020,78000,"maintenance",NULL)')
-        c.execute('INSERT OR IGNORE INTO vehicules VALUES(2,"DK-1234-AB","Volvo","7900",2019,120000,"actif",NULL)')
-        c.execute('INSERT OR IGNORE INTO vehicules VALUES(3,"DK-5678-CD","Iveco","Urbanway",2021,45000,"actif",NULL)')
-        c.execute('INSERT OR IGNORE INTO vehicules VALUES(4,"DK-9012-GH","Mercedes","Citaro",2018,180000,"hors_service",NULL)')
-        c.execute('INSERT OR IGNORE INTO vehicules VALUES(5,"DK-3456-IJ","Scania","N230",2022,25000,"actif",NULL)')
-        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(1,"FALL","Ibrahima","771234567","B","2019-03-15","actif")')
-        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(2,"DIOP","Moussa","772345678","D","2020-06-01","actif")')
-        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(3,"SOW","Fatou","773456789","B","2018-01-10","actif")')
-        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(4,"NDIAYE","Ousmane","774567890","D","2021-09-05","conge")')
-        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(5,"SYLLA","Mamadou","775678901","B","2022-02-20","actif")')
-        conn.commit()
-        conn.close()
-        
-init_db()
+VEHICULES = [
+    {"id":1,"immatriculation":"DK-9012-EF","marque":"Mercedes","modele":"Citaro","annee":2020,"kilometrage":78000,"statut":"maintenance"},
+    {"id":2,"immatriculation":"DK-1234-AB","marque":"Volvo","modele":"7900","annee":2019,"kilometrage":120000,"statut":"actif"},
+    {"id":3,"immatriculation":"DK-5678-CD","marque":"Iveco","modele":"Urbanway","annee":2021,"kilometrage":45000,"statut":"actif"},
+    {"id":4,"immatriculation":"DK-9012-GH","marque":"Mercedes","modele":"Citaro","annee":2018,"kilometrage":180000,"statut":"hors_service"},
+    {"id":5,"immatriculation":"DK-3456-IJ","marque":"Scania","modele":"N230","annee":2022,"kilometrage":25000,"statut":"actif"}
+]
 
-def get_db():
-    import sqlite3
-    return sqlite3.connect("transport.db")
+CHAUFFEURS = [
+    {"id":1,"nom":"FALL","prenom":"Ibrahima","telephone":"771234567","licence":"B","date_embauche":"2019-03-15","statut":"actif"},
+    {"id":2,"nom":"DIOP","prenom":"Moussa","telephone":"772345678","licence":"D","date_embauche":"2020-06-01","statut":"actif"},
+    {"id":3,"nom":"SOW","prenom":"Fatou","telephone":"773456789","licence":"B","date_embauche":"2018-01-10","statut":"actif"},
+    {"id":4,"nom":"NDIAYE","prenom":"Ousmane","telephone":"774567890","licence":"D","date_embauche":"2021-09-05","statut":"conge"},
+    {"id":5,"nom":"SYLLA","prenom":"Mamadou","telephone":"775678901","licence":"B","date_embauche":"2022-02-20","statut":"actif"}
+]
+
+LIGNES = [
+    {"id":1,"numero":"L1","nom":"Gare Routiere - Point E","debut_terminal":"Gare Routiere","fin_terminal":"Point E","distance_km":15.5},
+    {"id":2,"numero":"L2","nom":"Pikine - Almadies","debut_terminal":"Pikine","fin_terminal":"Almadies","distance_km":22.0},
+    {"id":3,"numero":"L3","nom":"Dakar Plateau - AIBD","debut_terminal":"Dakar Plateau","fin_terminal":"AIBD","distance_km":35.0}
+]
+
+TRAJETS = [
+    {"id":1,"vehicule_id":1,"chauffeur_id":1,"ligne_id":1,"date_heure_depart":"2026-04-07 08:00:00","date_heure_arrivee":"2026-04-07 08:45:00","nb_passagers":45,"statut":"termine"},
+    {"id":2,"vehicule_id":2,"chauffeur_id":2,"ligne_id":2,"date_heure_depart":"2026-04-07 09:00:00","date_heure_arrivee":"2026-04-07 09:50:00","nb_passagers":38,"statut":"termine"},
+    {"id":3,"vehicule_id":3,"chauffeur_id":3,"ligne_id":1,"date_heure_depart":"2026-04-07 10:00:00","date_heure_arrivee":"2026-04-07 10:45:00","nb_passagers":52,"statut":"termine"},
+    {"id":4,"vehicule_id":1,"chauffeur_id":1,"ligne_id":3,"date_heure_depart":"2026-04-08 08:00:00","date_heure_arrivee":"2026-04-08 09:00:00","nb_passagers":28,"statut":"termine"},
+    {"id":5,"vehicule_id":2,"chauffeur_id":2,"ligne_id":2,"date_heure_depart":"2026-04-08 09:00:00","date_heure_arrivee":"2026-04-08 09:50:00","nb_passagers":41,"statut":"termine"}
+]
+
+INCIDENTS = [
+    {"id":1,"trajet_id":1,"description":"Retard de 10 min","date_incident":"2026-04-07 08:30:00","gravite":"legel"},
+    {"id":2,"trajet_id":2,"description":"Panne technique","date_incident":"2026-04-07 09:30:00","gravite":"moyen"},
+    {"id":3,"trajet_id":4,"description":"Accident","date_incident":"2026-04-08 08:15:00","gravite":"grave"}
+]
+
+@app.get("/")
+def root():
+    return {"message": "TranspoBot API"}
+
+@app.get("/vehicules")
+def get_vehicules():
+    return VEHICULES
+
+@app.get("/chauffeurs")
+def get_chauffeurs():
+    return CHAUFFEURS
+
+@app.get("/trajets")
+def get_trajets():
+    return TRAJETS
+
+@app.get("/dashboard")
+def get_dashboard():
+    return {
+        "vehicules_actifs": len([v for v in VEHICULES if v["statut"]=="actif"]),
+        "chauffeurs_actifs": len([c for c in CHAUFFEURS if c["statut"]=="actif"]),
+        "trajets_semaine": len([t for t in TRAJETS if t["statut"]=="termine"]),
+        "incidents_mois": len(INCIDENTS)
+    }
 
 class Question(BaseModel):
     question: str
@@ -83,153 +98,71 @@ def extract_sql(text: str) -> str:
             return line.replace('SQL:', '').strip()
     return text
 
-@app.get("/")
-def root():
-    return {"message": "TranspoBot API - Gestion de Transport Urbain"}
-
-@app.get("/vehicules")
-def get_vehicules():
-    try:
-        conn = get_db()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vehicules")
-        rows = cursor.fetchall()
-        result = [dict(row) for row in rows]
-        cursor.close()
-        conn.close()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/chauffeurs")
-def get_chauffeurs():
-    try:
-        conn = get_db()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM chauffeurs")
-        rows = cursor.fetchall()
-        result = [dict(row) for row in rows]
-        cursor.close()
-        conn.close()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/trajets")
-def get_trajets():
-    try:
-        conn = get_db()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM trajets ORDER BY date_heure_depart DESC LIMIT 20")
-        rows = cursor.fetchall()
-        result = [dict(row) for row in rows]
-        cursor.close()
-        conn.close()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dashboard")
-def get_dashboard():
-    try:
-        from datetime import datetime, timedelta
-        conn = get_db()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT COUNT(*) as total FROM vehicules WHERE statut='actif'")
-        vehicules_actifs = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM chauffeurs WHERE statut='actif'")
-        chauffeurs_actifs = cursor.fetchone()['total']
-        
-        semaine_derniere = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-        cursor.execute("SELECT COUNT(*) as total FROM trajets WHERE statut='termine' AND date_heure_depart >= ?", (semaine_derniere,))
-        try:
-            trajets_semaine = cursor.fetchone()['total']
-        except:
-            trajets_semaine = 0
-        
-        mois_dernier = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        cursor.execute("SELECT COUNT(*) as total FROM incidents WHERE date_incident >= ?", (mois_dernier,))
-        try:
-            incidents_mois = cursor.fetchone()['total']
-        except:
-            incidents_mois = 0
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "vehicules_actifs": vehicules_actifs,
-            "chauffeurs_actifs": chauffeurs_actifs,
-            "trajets_semaine": trajets_semaine,
-            "incidents_mois": incidents_mois
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-def call_llm(prompt: str) -> str:
-    if USE_OLLAMA:
-        response = requests.post(
-            f"{OLLAMA_URL}/api/chat",
-            json={
-                "model": "llama3",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                "stream": False
-            }
-        )
-        return response.json()["message"]["content"]
-    else:
-        from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=500
-        )
-        return response.choices[0].message.content
+def search_data(sql: str):
+    sql = sql.upper()
+    results = []
+    
+    if "VEHICULES" in sql or ("SELECT" in sql and "VEHICULE" in sql):
+        results = VEHICULES
+        if "STATUT" in sql and "ACTIF" in sql:
+            results = [v for v in VEHICULES if v["statut"]=="actif"]
+        elif "MAINTENANCE" in sql:
+            results = [v for v in VEHICULES if v["statut"]=="maintenance"]
+    
+    elif "CHAUFFEURS" in sql or "CHAUFFEUR" in sql:
+        results = CHAUFFEURS
+        if "STATUT" in sql and "ACTIF" in sql:
+            results = [c for c in CHAUFFEURS if c["statut"]=="actif"]
+    
+    elif "TRAJETS" in sql or "TRAJET" in sql:
+        results = TRAJETS
+        if "COUNT" in sql:
+            return [{"COUNT(*)": len(TRAJETS)}]
+        if "TERMINE" in sql:
+            results = [t for t in TRAJETS if t["statut"]=="termine"]
+    
+    elif "INCIDENTS" in sql or "INCIDENT" in sql:
+        results = INCIDENTS
+        if "COUNT" in sql:
+            return [{"COUNT(*)": len(INCIDENTS)}]
+    
+    elif "COUNT(*)" in sql or "COUNT(" in sql:
+        if "VEHICULE" in sql:
+            return [{"COUNT(*)": len(VEHICULES)}]
+        elif "CHAUFFEUR" in sql:
+            return [{"COUNT(*)": len(CHAUFFEURS)}]
+        elif "TRAJET" in sql:
+            return [{"COUNT(*)": len(TRAJETS)}]
+        elif "INCIDENT" in sql:
+            return [{"COUNT(*)": len(INCIDENTS)}]
+    
+    return results
 
 @app.post("/chat")
 def chat(question: Question):
-    try:
-        llm_response = call_llm(question.question)
-        
-        sql_query = extract_sql(llm_response)
-        
-        if sql_query and "SELECT" in sql_query.upper():
-            conn = get_db()
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(sql_query)
-            rows = cursor.fetchall()
-            sql_results = [dict(row) for row in rows]
-            cursor.close()
-            conn.close()
-            
-            return {
-                "sql": sql_query,
-                "results": sql_results,
-                "response": llm_response
-            }
-        
-        return {
-            "sql": None,
-            "results": None,
-            "response": llm_response
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if not OPENAI_API_KEY:
+        return {"response": "API key non configuree. Utilisez USE_OLLAMA=true en local."}
+    
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": question.question}
+        ],
+        max_tokens=500
+    )
+    
+    llm_response = response.choices[0].message.content
+    sql_query = extract_sql(llm_response)
+    
+    if sql_query and "SELECT" in sql_query.upper():
+        results = search_data(sql_query)
+        return {"sql": sql_query, "results": results, "response": llm_response}
+    
+    return {"response": llm_response}
 
 if __name__ == "__main__":
     import uvicorn
