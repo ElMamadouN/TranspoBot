@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import mysql.connector
+import sqlite3
 import os
 from dotenv import load_dotenv
 import requests
@@ -44,12 +44,9 @@ SQL: <requete SQL>
 REPONSE: <reponse en francais>"""
 
 def get_db():
-    return mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME")
-    )
+    import sqlite3
+    db_path = os.path.join(os.path.dirname(__file__), "transport.db")
+    return sqlite3.connect(db_path)
 
 class Question(BaseModel):
     question: str
@@ -68,9 +65,11 @@ def root():
 def get_vehicules():
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
         cursor.execute("SELECT * FROM vehicules")
-        result = cursor.fetchall()
+        rows = cursor.fetchall()
+        result = [dict(row) for row in rows]
         cursor.close()
         conn.close()
         return result
@@ -81,9 +80,11 @@ def get_vehicules():
 def get_chauffeurs():
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
         cursor.execute("SELECT * FROM chauffeurs")
-        result = cursor.fetchall()
+        rows = cursor.fetchall()
+        result = [dict(row) for row in rows]
         cursor.close()
         conn.close()
         return result
@@ -94,9 +95,11 @@ def get_chauffeurs():
 def get_trajets():
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM trajet ORDER BY date_heure_depart DESC LIMIT 20")
-        result = cursor.fetchall()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM trajets ORDER BY date_heure_depart DESC LIMIT 20")
+        rows = cursor.fetchall()
+        result = [dict(row) for row in rows]
         cursor.close()
         conn.close()
         return result
@@ -106,8 +109,10 @@ def get_trajets():
 @app.get("/dashboard")
 def get_dashboard():
     try:
+        from datetime import datetime, timedelta
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
         
         cursor.execute("SELECT COUNT(*) as total FROM vehicules WHERE statut='actif'")
         vehicules_actifs = cursor.fetchone()['total']
@@ -115,11 +120,19 @@ def get_dashboard():
         cursor.execute("SELECT COUNT(*) as total FROM chauffeurs WHERE statut='actif'")
         chauffeurs_actifs = cursor.fetchone()['total']
         
-        cursor.execute("SELECT COUNT(*) as total FROM trajets WHERE statut='termine' AND date_heure_depart >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
-        trajets_semaine = cursor.fetchone()['total']
+        semaine_derniere = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        cursor.execute("SELECT COUNT(*) as total FROM trajets WHERE statut='termine' AND date_heure_depart >= ?", (semaine_derniere,))
+        try:
+            trajets_semaine = cursor.fetchone()['total']
+        except:
+            trajets_semaine = 0
         
-        cursor.execute("SELECT COUNT(*) as total FROM incidents WHERE date_incident >= DATE_SUB(NOW(), INTERVAL 30 DAY)")
-        incidents_mois = cursor.fetchone()['total']
+        mois_dernier = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        cursor.execute("SELECT COUNT(*) as total FROM incidents WHERE date_incident >= ?", (mois_dernier,))
+        try:
+            incidents_mois = cursor.fetchone()['total']
+        except:
+            incidents_mois = 0
         
         cursor.close()
         conn.close()
@@ -169,9 +182,11 @@ def chat(question: Question):
         
         if sql_query and "SELECT" in sql_query.upper():
             conn = get_db()
-            cursor = conn.cursor(dictionary=True)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
             cursor.execute(sql_query)
-            sql_results = cursor.fetchall()
+            rows = cursor.fetchall()
+            sql_results = [dict(row) for row in rows]
             cursor.close()
             conn.close()
             
