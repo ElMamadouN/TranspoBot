@@ -2,10 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
-from dotenv import load_dotenv
-import requests
-
-load_dotenv()
 
 app = FastAPI(title="TranspoBot API")
 
@@ -16,8 +12,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-USE_OLLAMA = os.getenv("USE_OLLAMA", "false").lower() == "true"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() == "true"
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 SYSTEM_PROMPT = """Tu es un assistant IA pour une societe de transport urbain au Senegal.
 Tu generes des requetes SQL SELECT pour repondre aux questions.
