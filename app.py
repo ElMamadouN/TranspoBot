@@ -43,6 +43,33 @@ Reponds avec ce format:
 SQL: <requete SQL>
 REPONSE: <reponse en francais>"""
 
+def init_db():
+    import sqlite3
+    import os
+    if not os.path.exists("transport.db"):
+        conn = sqlite3.connect("transport.db")
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS vehicules (id INTEGER PRIMARY KEY, immatriculation TEXT UNIQUE, marque TEXT, modele TEXT, annee INTEGER, kilometrage INTEGER DEFAULT 0, statut TEXT DEFAULT 'actif', date_derniere_maintenance TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS chauffeurs (id INTEGER PRIMARY KEY, nom TEXT, prenom TEXT, telephone TEXT, licence TEXT, date_embauche TEXT, statut TEXT DEFAULT 'actif')''')
+        c.execute('''CREATE TABLE IF NOT EXISTS lignes (id INTEGER PRIMARY KEY, numero TEXT UNIQUE, nom TEXT, debut_terminal TEXT, fin_terminal TEXT, distance_km REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS tarifs (id INTEGER PRIMARY KEY, ligne_id INTEGER, type_tarif TEXT, montant REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS trajets (id INTEGER PRIMARY KEY, vehicule_id INTEGER, chauffeur_id INTEGER, ligne_id INTEGER, date_heure_depart TEXT, date_heure_arrivee TEXT, nb_passagers INTEGER DEFAULT 0, statut TEXT DEFAULT 'planifie')''')
+        c.execute('''CREATE TABLE IF NOT EXISTS incidents (id INTEGER PRIMARY KEY, trajet_id INTEGER, description TEXT, date_incident TEXT, gravite TEXT)''')
+        c.execute('INSERT OR IGNORE INTO vehicules VALUES(1,"DK-9012-EF","Mercedes","Citaro",2020,78000,"maintenance",NULL)')
+        c.execute('INSERT OR IGNORE INTO vehicules VALUES(2,"DK-1234-AB","Volvo","7900",2019,120000,"actif",NULL)')
+        c.execute('INSERT OR IGNORE INTO vehicules VALUES(3,"DK-5678-CD","Iveco","Urbanway",2021,45000,"actif",NULL)')
+        c.execute('INSERT OR IGNORE INTO vehicules VALUES(4,"DK-9012-GH","Mercedes","Citaro",2018,180000,"hors_service",NULL)')
+        c.execute('INSERT OR IGNORE INTO vehicules VALUES(5,"DK-3456-IJ","Scania","N230",2022,25000,"actif",NULL)')
+        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(1,"FALL","Ibrahima","771234567","B","2019-03-15","actif")')
+        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(2,"DIOP","Moussa","772345678","D","2020-06-01","actif")')
+        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(3,"SOW","Fatou","773456789","B","2018-01-10","actif")')
+        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(4,"NDIAYE","Ousmane","774567890","D","2021-09-05","conge")')
+        c.execute('INSERT OR IGNORE INTO chauffeurs VALUES(5,"SYLLA","Mamadou","775678901","B","2022-02-20","actif")')
+        conn.commit()
+        conn.close()
+        
+init_db()
+
 def get_db():
     import sqlite3
     return sqlite3.connect("transport.db")
