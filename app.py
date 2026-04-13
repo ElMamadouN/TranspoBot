@@ -45,14 +45,7 @@ REPONSE: <reponse en francais>"""
 
 def get_db():
     import sqlite3
-    import os
-    import json
-    db_path = "transport.db"
-    files = os.listdir('.')
-    if not os.path.exists(db_path):
-        raise Exception(f"DB not found! Available files: {json.dumps(files)}")
-    conn = sqlite3.connect(db_path)
-    return conn
+    return sqlite3.connect("transport.db")
 
 class Question(BaseModel):
     question: str
@@ -66,11 +59,6 @@ def extract_sql(text: str) -> str:
 @app.get("/")
 def root():
     return {"message": "TranspoBot API - Gestion de Transport Urbain"}
-
-@app.get("/debug")
-def debug():
-    import os
-    return {"files": os.listdir('.'), "cwd": os.getcwd()}
 
 @app.get("/vehicules")
 def get_vehicules():
