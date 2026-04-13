@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TranspoBot - Gestion de Transport Urbain</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f7fa; }
+        
+        .header { background: #1a73e8; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.5rem; }
+        
+        .container { display: flex; min-height: calc(100vh - 60px); }
+        
+        .sidebar { width: 250px; background: white; border-right: 1px solid #ddd; padding: 1rem; }
+        .sidebar button { width: 100%; padding: 0.75rem; margin-bottom: 0.5rem; border: none; background: #f5f7fa; cursor: pointer; border-radius: 4px; text-align: left; }
+        .sidebar button:hover, .sidebar button.active { background: #e8f0fe; color: #1a73e8; }
+        
+        .main { flex: 1; padding: 2rem; }
+        
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+        .kpi-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .kpi-card h3 { font-size: 0.9rem; color: #666; margin-bottom: 0.5rem; }
+        .kpi-card .value { font-size: 2rem; font-weight: bold; color: #1a73e8; }
+        
+        .section { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .section h2 { font-size: 1.2rem; margin-bottom: 1rem; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f5f7fa; font-weight: 600; }
+        
+        .chat-container { position: fixed; bottom: 0; right: 20px; width: 400px; height: 500px; background: white; border-radius: 8px 8px 0 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .chat-header { background: #1a73e8; color: white; padding: 1rem; border-radius: 8px 8px 0 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .chat-toggle-icon { font-size: 1.2rem; }
+        .chat-messages { flex: 1; padding: 1rem; overflow-y: auto; }
+        .chat-input { padding: 1rem; border-top: 1px solid #eee; display: flex; }
+        .chat-input input { flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+        .chat-input button { margin-left: 0.5rem; padding: 0.5rem 1rem; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        
+        .message { margin-bottom: 1rem; padding: 0.75rem; border-radius: 8px; }
+        .message.user { background: #e8f0fe; margin-left: 20%; }
+        .message.bot { background: #f5f7fa; margin-right: 20%; }
+        .sql-query { font-size: 0.75rem; color: #888; font-style: italic; margin: 0.5rem 0; }
+        .results-table { width: 100%; margin-top: 0.5rem; font-size: 0.85rem; border-collapse: collapse; }
+        .results-table th, .results-table td { padding: 0.5rem; border: 1px solid #ddd; text-align: left; }
+        .results-table th { background: #e8f0fe; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>TranspoBot - Gestion de Transport Urbain</h1>
+        <span>ESP/UCAD - Licence 3</span>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <button class="active" onclick="showSection('dashboard')">Tableau de bord</button>
+            <button onclick="showSection('vehicules')">Vehicules</button>
+            <button onclick="showSection('chauffeurs')">Chauffeurs</button>
+            <button onclick="showSection('trajets')">Trajets</button>
+        </div>
+        
+        <div class="main">
+            <div id="dashboard" class="section">
+                <h2>Tableau de bord</h2>
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <h3>Vehicules actifs</h3>
+                        <div class="value" id="kpi-vehicules">-</div>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Chauffeurs actifs</h3>
+                        <div class="value" id="kpi-chauffeurs">-</div>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Trajets cette semaine</h3>
+                        <div class="value" id="kpi-trajets">-</div>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Incidents ce mois</h3>
+                        <div class="value" id="kpi-incidents">-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="vehicules" class="section hidden">
+                <h2>Liste des vehicules</h2>
+                <table id="vehicules-table">
+                    <thead>
+                        <tr>
+                            <th>Immatriculation</th>
+                            <th>Marque</th>
+                            <th>Modele</th>
+                            <th>Annee</th>
+                            <th>Km</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            
+            <div id="chauffeurs" class="section hidden">
+                <h2>Liste des chauffeurs</h2>
+                <table id="chauffeurs-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Prenom</th>
+                            <th>Telephone</th>
+                            <th>Licence</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            
+            <div id="trajets" class="section hidden">
+                <h2>Trajets recents</h2>
+                <table id="trajets-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Statut</th>
+                            <th>Passagers</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="chat-container" id="chat">
+        <div class="chat-header" onclick="toggleChat()">
+            <strong>Assistant IA</strong> - Cliquez pour chatter
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input">
+            <input type="text" id="user-input" placeholder="Posez votre question..." onkeypress="if(event.key==='Enter')sendMessage()">
+            <button onclick="sendMessage()">Envoyer</button>
+        </div>
+    </div>
+    
+    <script>
+        const API = 'http://localhost:8000';
+        
+        async function loadDashboard() {
+            try {
+                const res = await fetch(`${API}/dashboard`);
+                const data = await res.json();
+                document.getElementById('kpi-vehicules').textContent = data.vehicules_actifs;
+                document.getElementById('kpi-chauffeurs').textContent = data.chauffeurs_actifs;
+                document.getElementById('kpi-trajets').textContent = data.trajets_semaine;
+                document.getElementById('kpi-incidents').textContent = data.incidents_mois;
+            } catch(e) { console.error(e); }
+        }
+        
+        async function loadVehicules() {
+            const res = await fetch(`${API}/vehicules`);
+            const data = await res.json();
+            const tbody = document.querySelector('#vehicules-table tbody');
+            tbody.innerHTML = data.map(v => `<tr>
+                <td>${v.immatriculation}</td>
+                <td>${v.marque}</td>
+                <td>${v.modele}</td>
+                <td>${v.annee}</td>
+                <td>${v.kilometrage}</td>
+                <td>${v.statut}</td>
+            </tr>`).join('');
+        }
+        
+        async function loadChauffeurs() {
+            const res = await fetch(`${API}/chauffeurs`);
+            const data = await res.json();
+            const tbody = document.querySelector('#chauffeurs-table tbody');
+            tbody.innerHTML = data.map(c => `<tr>
+                <td>${c.nom}</td>
+                <td>${c.prenom}</td>
+                <td>${c.telephone}</td>
+                <td>${c.licence}</td>
+                <td>${c.statut}</td>
+            </tr>`).join('');
+        }
+        
+        async function loadTrajets() {
+            const res = await fetch(`${API}/trajets`);
+            const data = await res.json();
+            const tbody = document.querySelector('#trajets-table tbody');
+            tbody.innerHTML = data.map(t => `<tr>
+                <td>${new Date(t.date_heure_depart).toLocaleString()}</td>
+                <td>${t.statut}</td>
+                <td>${t.nb_passagers}</td>
+            </tr>`).join('');
+        }
+        
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+            document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (id === 'vehicules') loadVehicules();
+            if (id === 'chauffeurs') loadChauffeurs();
+            if (id === 'trajets') loadTrajets();
+        }
+        
+        function toggleChat() {
+            document.getElementById('chat').classList.toggle('hidden');
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            
+            addMessage(msg, 'user');
+            input.value = '';
+            
+            const res = await fetch(`${API}/chat`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({question: msg})
+            });
+            const data = await res.json();
+            
+            let response = data.response;
+            if (data.results && data.results.length > 0) {
+                addMessage(response, 'bot', data.results);
+            } else {
+                addMessage(response, 'bot');
+            }
+        }
+        
+        function addMessage(text, type, results = null) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            
+            if (type === 'bot' && results && results.length > 0) {
+                let html = `<strong>${text}</strong>`;
+                html += '<div class="sql-query">SQL execute</div>';
+                html += '<table class="results-table"><thead><tr>';
+                Object.keys(results[0]).forEach(k => html += `<th>${k}</th>`);
+                html += '</tr></thead><tbody>';
+                results.forEach(r => {
+                    html += '<tr>';
+                    Object.values(r).forEach(v => html += `<td>${v}</td>`);
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                div.innerHTML = html;
+            } else {
+                div.textContent = text;
+            }
+            document.getElementById('chat-messages').appendChild(div);
+        }
+        
+        loadDashboard();
+    </script>
+</body>
+</html>
