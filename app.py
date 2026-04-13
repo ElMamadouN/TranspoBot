@@ -45,6 +45,9 @@ REPONSE: <reponse en francais>"""
 
 def get_db():
     import sqlite3
+    import os
+    print(f"DB exists: {os.path.exists('transport.db')}")
+    print(f"Files: {os.listdir('.')}")
     return sqlite3.connect("transport.db")
 
 class Question(BaseModel):
